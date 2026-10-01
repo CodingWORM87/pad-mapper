@@ -88,6 +88,33 @@ details p,details li{color:var(--muted)}
 .formula{font-family:var(--f-mono);font-size:13px;color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:4px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
+.fi{display:flex;gap:4px;align-items:center}
+.fi input{width:4.2em}
+.fi select{width:5.2em}
+.fi span{font:500 13px var(--f-mono);color:var(--muted)}
+/* ---- guide ---- */
+.guide{max-width:72ch;margin:0 auto;display:grid;gap:18px}
+.guide .g-title{font:700 30px/1.05 var(--f-display);text-transform:uppercase;margin:0;text-wrap:balance}
+.guide .g-title span{color:var(--accent)}
+.guide .g-title small{display:block;font:600 14px var(--f-body);letter-spacing:.08em;color:var(--muted);margin-top:6px}
+.guide .g-lede{margin:0;color:var(--muted)}
+.guide h2{font:700 19px/1.1 var(--f-display);letter-spacing:.04em;color:var(--ink);margin:0 0 8px;text-transform:uppercase}
+.guide section{border-top:1px solid var(--line);padding-top:14px;scroll-margin-top:12px}
+.guide ol,.guide ul{margin:0;padding-left:1.3em;display:grid;gap:6px}
+.guide dl{margin:0;display:grid;gap:10px}
+.guide dt{font-weight:600}
+.guide dd{margin:2px 0 0;color:var(--muted)}
+.guide a{color:var(--fill)}
+.g-toc{display:flex;flex-wrap:wrap;gap:6px}
+.g-toc a{font:600 13px var(--f-body);text-decoration:none;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:4px 9px}
+.g-note{border-left:3px solid var(--accent);background:var(--bg);padding:8px 10px;margin:10px 0 0;border-radius:0 4px 4px 0}
+.g-table{border-collapse:collapse;width:100%;font:14px var(--f-body)}
+.g-table td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.g-table td:last-child{font-family:var(--f-mono);font-size:13px}
+.gwrap{position:fixed;inset:0;z-index:50;background:color-mix(in srgb,var(--ink) 50%,transparent);display:flex;justify-content:center;align-items:flex-start;padding:calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px))}
+.gpanel{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:8px;width:100%;max-width:820px;max-height:100%;overflow:auto;padding:16px 18px 28px}
+.gbar{position:sticky;top:-16px;margin:-16px -18px 10px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;z-index:1}
+.gbar a{font-size:13px;color:var(--fill)}
 .example{font:600 11px var(--f-body);text-transform:uppercase;letter-spacing:.08em;background:var(--accent);color:var(--accent-ink);padding:2px 6px;border-radius:3px}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
@@ -106,6 +133,7 @@ details p,details li{color:var(--muted)}
       <select id="jobList" aria-label="Saved jobs" style="width:160px"></select>
       <button id="newJob">New pad</button>
       <button id="delJob" class="danger">Delete</button>
+      <button id="openGuide">Guide</button>
     </div>
   </header>
 
@@ -116,7 +144,16 @@ details p,details li{color:var(--muted)}
           <h2>Pad plan</h2><span id="exampleTag" class="example" hidden>Example data</span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div class="seg" role="group" aria-label="Labels show">
+            <button id="showCF" aria-pressed="true">Cut/Fill</button>
+            <button id="showRaw" aria-pressed="false">Shot readings</button>
+          </div>
+          <div class="seg" role="group" aria-label="Units">
+            <button id="uDec" aria-pressed="true">Ft &amp; tenths</button>
+            <button id="uFI" aria-pressed="false">Ft-in</button>
+          </div>
           <label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px"><input id="snap" type="checkbox" style="width:auto"> Snap to 1 ft</label>
+          <button id="addMode" class="primary">Done adding</button>
           <button id="undo">Undo</button>
           <button id="clearPts" class="danger">Clear shots</button>
         </div>
@@ -126,7 +163,7 @@ details p,details li{color:var(--muted)}
         <span><i style="background:var(--cut)"></i>Cut (take down)</span>
         <span><i style="background:var(--fill)"></i>Fill (bring up)</span>
         <span><i style="border:1.5px dashed var(--ink);background:transparent"></i>Grade line (0.00)</span>
-        <span class="hint">Tap empty space = new shot · Tap shot = edit · Drag shot = move</span>
+        <span class="hint" id="planHint">Tap empty space = new shot · Tap shot = edit · Drag shot = move</span>
       </div>
 
       <div id="editor" class="editor" hidden>
@@ -169,14 +206,23 @@ details p,details li{color:var(--muted)}
         <label>How are you shooting it?
           <select id="mode">
             <option value="direct">Cut/fill numbers (off stakes or grade checker)</option>
+            <option value="auto">Laser + rod, no benchmark (balance the pad)</option>
             <option value="rod">Laser + rod readings</option>
             <option value="elev">Ground elevations (rover / total station / plans)</option>
           </select>
         </label>
         <div class="fields">
           <label id="targetWrap" hidden>Target rod at finish grade (ft)<input id="target" type="number" inputmode="decimal" step="0.01"></label>
+          <label id="avgWrap" hidden>Grade rod from
+            <select id="avgMethod">
+              <option value="plain">Average of shots (add up readings ÷ number of shots)</option>
+              <option value="area">Area-weighted balance (corrects for uneven shot spacing + shrink)</option>
+            </select>
+          </label>
+          <label id="offWrap" hidden>Raise (+) / lower (−) pad from balance (ft)<input id="offset" type="number" step="0.01"></label>
           <label id="fgWrap" hidden>Finish grade elev (ft)<input id="fg" type="number" inputmode="decimal" step="0.01"></label>
         </div>
+        <div id="autoOut" class="callout" hidden></div>
         <p id="modeHint" class="hint" style="margin:0"></p>
       </section>
 
@@ -219,7 +265,7 @@ details p,details li{color:var(--muted)}
     </div>
     <div class="tablebox">
       <table>
-        <thead><tr><th>#</th><th>X ft</th><th>Y ft</th><th id="thIn">Input</th><th>Cut/Fill ft</th><th>Inches</th><th>Note</th></tr></thead>
+        <thead><tr><th>#</th><th>X ft</th><th>Y ft</th><th id="thIn">Input</th><th id="thCF">Cut/Fill</th><th id="thAlt">Inches</th><th>Note</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -243,6 +289,128 @@ details p,details li{color:var(--muted)}
   </section>
 </div>
 <div id="toast" class="toast" role="status"></div>
+<div id="guide" class="gwrap" hidden role="dialog" aria-modal="true" aria-label="User guide">
+  <div class="gpanel" id="gpanel">
+    <div class="gbar"><a href="https://codingworm87.github.io/pad-mapper/guide.html" target="_blank" rel="noopener">Open guide as its own page ↗</a><button id="closeGuide" class="primary">Close guide</button></div>
+<article class="guide">
+  <h1 class="g-title">Pad Cut<span>/</span>Fill Mapper <small>User guide</small></h1>
+  <p class="g-lede">Shoot a pad with a laser and rod (or off stakes or elevations), tap each shot onto the plan, and get cut/fill at every shot, average depths, volumes in cubic yards, and truckloads.</p>
+
+  <nav class="g-toc" aria-label="Guide contents">
+    <a href="#g-quick">Quick start</a><a href="#g-buttons">Buttons</a><a href="#g-modes">Shooting modes</a><a href="#g-shots">Entering shots</a><a href="#g-results">Results</a><a href="#g-earth">Earthwork factors</a><a href="#g-jobs">Saving jobs</a><a href="#g-tips">Field tips</a><a href="#g-math">Formulas</a>
+  </nav>
+
+  <section id="g-quick">
+    <h2>Quick start: no benchmark, laser and rod</h2>
+    <ol>
+      <li>Hit <b>New pad</b>. Enter the pad <b>width</b> and <b>length</b> in feet.</li>
+      <li>Under <b>How are you shooting it?</b> pick <b>Laser + rod, no benchmark</b>. Leave <b>Grade rod from</b> on <b>Average of shots</b>.</li>
+      <li>Set the laser up anywhere it can see the whole pad. No benchmark needed.</li>
+      <li>Walk the pad in a rough grid. At each spot, tap that spot on the plan and type the rod reading. Press Enter (or <b>Done</b>) and tap the next spot.</li>
+      <li>Shoot the corners and edges too. Volumes only count the area inside your outer shots.</li>
+      <li>When the whole pad is shot, hit <b>Done adding</b>. The labels flip from rod readings to cut/fill.</li>
+      <li>Read the <b>Grade rod</b> in Pad setup. Set your grade rod to that number and cut to it.</li>
+    </ol>
+    <p class="g-note">Grade rod = all readings added up ÷ number of shots. Cut/fill at each shot = grade rod − that shot's reading. Don't trust the cut/fills until every shot is in; the average changes with each one.</p>
+  </section>
+
+  <section id="g-buttons">
+    <h2>Buttons above the plan</h2>
+    <dl>
+      <dt>Cut/Fill · Shot readings</dt><dd>What the dots are labeled with: cut/fill (C 0.45' / F 0.30') or the raw reading you entered. Dot color is always red = cut, blue = fill.</dd>
+      <dt>Ft &amp; tenths · Ft-in</dt><dd>Decimal feet (5.50', engineer rod) or feet-inches to the nearest 1/8" (5' 6", inch rod). Changes every number on the page. In Ft-in, the rod reading boxes become ft / in / eighths. Elevations always stay in decimal feet.</dd>
+      <dt>Done adding · + Add shots</dt><dd>Done adding locks the plan: tapping a shot shows its info, and nothing gets added or moved by accident. + Add shots turns adding back on.</dd>
+      <dt>Snap to 1 ft</dt><dd>Rounds shot positions to the nearest foot.</dd>
+      <dt>Undo</dt><dd>Takes back the last add, move, delete or clear.</dd>
+      <dt>Clear shots</dt><dd>Deletes every shot on this pad. Tap twice to confirm.</dd>
+    </dl>
+  </section>
+
+  <section id="g-modes">
+    <h2>Shooting modes</h2>
+    <dl>
+      <dt>Laser + rod, no benchmark</dt><dd>Enter rod readings only. The page sets the grade rod for you. <b>Average of shots</b> = sum ÷ count, the field method. <b>Area-weighted balance</b> corrects for uneven shot spacing and for shrink, so cut exactly makes the fill. <b>Raise / lower pad</b> moves the grade up (+) or down (−) from there.</dd>
+      <dt>Laser + rod readings</dt><dd>You already know the target rod reading at finish grade. Enter it once, then a reading at each shot. Cut/fill = target − reading.</dd>
+      <dt>Cut/fill numbers</dt><dd>Enter cut or fill straight off grade stakes or a grade checker.</dd>
+      <dt>Ground elevations</dt><dd>Enter finish grade elevation, then existing ground elevation at each shot. Cut/fill = existing − finish. With no benchmark, call a solid object on site 100.00 and shoot everything off it.</dd>
+    </dl>
+  </section>
+
+  <section id="g-shots">
+    <h2>Entering and fixing shots</h2>
+    <ul>
+      <li><b>Add:</b> tap empty space on the plan (adding must be on). The shot box opens; type the reading.</li>
+      <li><b>Open a shot:</b> tap its dot, or tap its row in the Shot log.</li>
+      <li><b>Close without adding:</b> with a shot open, tapping empty space just closes it.</li>
+      <li><b>Move:</b> drag the dot (adding on), or type exact X / Y feet. X is from the left edge, Y from the top edge.</li>
+      <li><b>Note:</b> label a shot, e.g. "NE corner" or "stake 4".</li>
+      <li><b>Delete shot:</b> in the shot box.</li>
+      <li>A dot with "?" has no reading yet and is left out of the math.</li>
+    </ul>
+  </section>
+
+  <section id="g-results">
+    <h2>Reading the results</h2>
+    <dl>
+      <dt>Cut / Fill (CY)</dt><dd>In-place cut yards and compacted fill yards, with the square footage each covers.</dd>
+      <dt>Avg cut depth / Avg fill depth</dt><dd>Area-weighted: cut volume ÷ cut area. Bunched-up shots don't skew it.</dd>
+      <dt>Average over pad</dt><dd>Net depth across the whole covered area. C means the pad is high overall, F means low.</dd>
+      <dt>Plain average of shots</dt><dd>Straight average of all cut/fills. Close to zero in average-of-shots mode.</dd>
+      <dt>Area covered by shots</dt><dd>Percent of the pad inside your outer shots. Under 100% means some volume isn't counted. Shoot the corners.</dd>
+      <dt>To balance</dt><dd>How far to raise or lower finish grade so cut makes the fill after shrink.</dd>
+    </dl>
+  </section>
+
+  <section id="g-earth">
+    <h2>Earthwork factors</h2>
+    <ul>
+      <li><b>Soil type</b> fills in shrink and swell from <a href="https://highways.fhwa.dot.gov/federal-lands/pddm/dpg/earthwork-design" target="_blank" rel="noopener">FHWA PDDM Exhibit 5.1 A</a>. These are averages; FHWA notes ±33% variation. Use your geotech or compaction numbers when you have them. Typing your own numbers switches the soil type to Custom.</li>
+      <li><b>Shrink %</b>: bank (in place) to compacted. Negative means the material bulks up even when compacted (rocky material).</li>
+      <li><b>Swell %</b>: bank to loose in the truck.</li>
+      <li><b>Truck load (loose CY)</b>: what one truck hauls. Used for load counts.</li>
+      <li><b>Strip depth (in)</b>: topsoil stripped over the whole pad, in bank CY and loads.</li>
+      <li>The panel shows bank CY needed to make the fill, import or export in bank and loose CY, and truckloads.</li>
+    </ul>
+  </section>
+
+  <section id="g-jobs">
+    <h2>Saving jobs</h2>
+    <ul>
+      <li>Type a <b>Job name</b> and hit <b>Save job</b>. Reopen it from <b>Saved jobs</b>.</li>
+      <li>Jobs save in the browser on this device only. A different phone, browser, or link (Claude link vs GitHub link) has its own separate list.</li>
+      <li>The pad you're working on is kept automatically if you close the page.</li>
+      <li><b>Copy summary</b> copies the results and shot list as CSV. Paste into Excel or a text.</li>
+    </ul>
+  </section>
+
+  <section id="g-tips">
+    <h2>Field tips</h2>
+    <ul>
+      <li>Shoot a rough grid (every 20–25 ft) plus every corner and edge midpoint.</li>
+      <li>Add extra shots at humps, holes and grade breaks. Uneven spacing is fine with Area-weighted balance.</li>
+      <li>Keep the laser in one setup for the whole pad. If you move it, every reading after the move is on a different height and the average is off.</li>
+      <li>Check your rod is plumb and the receiver is locked before each shot.</li>
+    </ul>
+  </section>
+
+  <section id="g-math">
+    <h2>Formulas</h2>
+    <table class="g-table">
+      <tr><td>Grade rod (average of shots)</td><td>Σ rod readings ÷ number of shots</td></tr>
+      <tr><td>Cut/fill, laser</td><td>grade rod − rod reading (+ = cut, − = fill)</td></tr>
+      <tr><td>Cut/fill, elevations</td><td>existing elev − finish elev</td></tr>
+      <tr><td>Volume (TIN)</td><td>each triangle of 3 shots: area × average of 3 depths, split on the 0.00 line</td></tr>
+      <tr><td>Cubic yards</td><td>cu ft ÷ 27</td></tr>
+      <tr><td>Bank CY needed for fill</td><td>compacted fill CY ÷ (1 − shrink)</td></tr>
+      <tr><td>Loose CY</td><td>bank CY × (1 + swell)</td></tr>
+      <tr><td>Truckloads</td><td>loose CY ÷ truck load, rounded up</td></tr>
+      <tr><td>Stripping</td><td>pad area × depth in ÷ 12 ÷ 27</td></tr>
+    </table>
+  </section>
+</article>
+
+  </div>
+</div>
 
 <script>
 /* ===== core math (pure) ===== */
@@ -330,14 +498,17 @@ function example(){
   for(const [x,y,v] of shots) s.points.push({id:uid++,x,y,v,rod:+(5.5-v).toFixed(2),elev:+(100+v).toFixed(2),note:''});
   return s;
 }
-function blank(){return {name:'',example:false,W:100,L:100,mode:'direct',target:'',fg:'',soil:'custom',shrink:0,swell:0,truck:12,strip:0,snap:false,points:[]};}
+function blank(){return {name:'',example:false,W:100,L:100,mode:'auto',offset:0,avgMethod:'plain',show:'raw',target:'',fg:'',soil:'custom',shrink:0,swell:0,truck:12,strip:0,snap:false,points:[]};}
 let S=LS.get('padcf.current')||example();
 S.points.forEach(p=>uid=Math.max(uid,p.id+1));
 let sel=null, history=[];
 const num=v=>{const n=parseFloat(v);return Number.isFinite(n)?n:null;};
+let AUTO_T=null, AUTO_N=0; // auto mode: rod reading at the balance finish grade
+const isRod=()=>S.mode==='rod'||S.mode==='auto';
 function hOf(p){
   if(S.mode==='direct') return num(p.v);
   if(S.mode==='rod'){const t=num(S.target),r=num(p.rod);return t==null||r==null?null:t-r;}
+  if(S.mode==='auto'){const r=num(p.rod);return AUTO_T==null||r==null?null:AUTO_T-r;}
   const g=num(S.fg),e=num(p.elev);return g==null||e==null?null:e-g;
 }
 function pushHist(){history.push(JSON.stringify(S.points));if(history.length>60)history.shift();}
@@ -345,13 +516,59 @@ function persist(){LS.set('padcf.current',S);}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1600);}
 const f2=n=>(n<0?'−':'')+Math.abs(n).toFixed(2);
 const inch=ft=>(Math.abs(ft)*12).toFixed(1)+' in';
+/* units: 'dec' = feet & tenths/hundredths (engineer rod), 'fi' = feet-inches to nearest 1/8" */
+function ftin(ft){
+  const neg=ft<0; let t=Math.round(Math.abs(ft)*96);
+  const f=Math.floor(t/96); t-=f*96; const i=Math.floor(t/8), e=t-i*8;
+  const fr=!e?'':' '+(e%2?e+'/8':e===4?'1/2':(e/2)+'/4');
+  return (neg?'−':'')+f+"' "+i+fr+'"';
+}
+const L=ft=>S.units==='fi'?ftin(ft):ft.toFixed(2)+"'";          // primary length display
+const alt=ft=>S.units==='fi'?Math.abs(ft).toFixed(2)+' ft':inch(ft); // secondary display
+const FRACS=['0','1/8','1/4','3/8','1/2','5/8','3/4','7/8'];
 const cy=cf=>cf/27;
 const fmt0=n=>Math.round(n).toLocaleString();
-const cf=h=>h>0?'C '+h.toFixed(2):h<0?'F '+(-h).toFixed(2):'0.00';
+const cf=h=>h>0?'C '+L(h):h<0?'F '+L(-h):'ON GRADE';
+function rawLabel(p){ // the shot as read in the field
+  if(isRod()) return p.rod==null?null:L(p.rod);
+  if(S.mode==='elev') return p.elev==null?null:(+p.elev).toFixed(2);
+  return p.v==null?null:cf(p.v);
+}
+/* ft-in entry widget mirrored onto a decimal-feet input */
+function fiSetup(id){
+  const inp=$(id), g=document.createElement('span'); g.className='fi'; g.id=id+'_fi'; g.hidden=true;
+  g.innerHTML='<input type="number" inputmode="numeric" min="0" step="1" aria-label="feet"><span>ft</span><input type="number" inputmode="numeric" min="0" max="11" step="1" aria-label="inches"><span>in</span><select aria-label="eighths">'+FRACS.map((f,k)=>'<option value="'+k+'">'+f+'</option>').join('')+'</select>';
+  inp.after(g);
+  const [fI,iI,eS]=g.querySelectorAll('input,select');
+  const push=()=>{const f=num(fI.value),i=num(iI.value),e=+eS.value; if(f==null&&i==null&&!e){inp.value='';}else{inp.value=((f||0)+(i||0)/12+e/96).toFixed(4);} inp.dispatchEvent(new Event('input'));};
+  fI.addEventListener('input',push); iI.addEventListener('input',push); eS.addEventListener('change',push);
+}
+function fiSync(id){
+  const inp=$(id), g=$(id+'_fi'); if(!g) return;
+  const fi=S.units==='fi'; g.hidden=!fi; inp.hidden=fi;
+  if(g.contains(document.activeElement)) return;
+  const [fI,iI,eS]=g.querySelectorAll('input,select'); const v=num(inp.value);
+  if(v==null){fI.value='';iI.value='';eS.value='0';return;}
+  let t=Math.round(Math.abs(v)*96); const f=Math.floor(t/96); t-=f*96;
+  fI.value=f; iI.value=Math.floor(t/8); eS.value=String(t%8);
+}
+const FI_IDS=['edMag','edRodV','target'];
 
 /* ===== compute ===== */
 let R=null;
 function compute(){
+  AUTO_T=null;
+  if(S.mode==='auto'){
+    const sh0=(num(S.shrink)||0)/100, s0=new Set(), P0=[];
+    for(const p of S.points){const r=num(p.rod); if(r==null) continue; const k=p.x.toFixed(3)+','+p.y.toFixed(3); if(s0.has(k)) continue; s0.add(k); P0.push({x:p.x,y:p.y,h:-r});}
+    if(S.avgMethod==='area'){
+      const t0=delaunay(P0);
+      if(t0.length&&sh0<1){const d=balanceShift(P0,t0,sh0); if(d!=null) AUTO_T=-d-(num(S.offset)||0);}
+    } else if(P0.length){
+      AUTO_T=P0.reduce((a,q)=>a-q.h,0)/P0.length-(num(S.offset)||0); // sum of rod readings / number of shots
+    }
+    AUTO_N=P0.length;
+  }
   const seen=new Set(), P=[];
   for(const p of S.points){const h=hOf(p); if(h==null) continue; const k=p.x.toFixed(3)+','+p.y.toFixed(3); if(seen.has(k)) continue; seen.add(k); P.push({x:p.x,y:p.y,h,id:p.id});}
   const tris=delaunay(P);
@@ -411,22 +628,25 @@ function draw(){
     ctx.beginPath(); ctx.arc(px,py,6.5,0,7);
     ctx.fillStyle=h==null?C.muted:h>0?C.cut:h<0?C.fill:C.ink; ctx.fill();
     ctx.strokeStyle=C.surf; ctx.lineWidth=2; ctx.stroke();
-    const lab=h==null?'#'+(i+1)+' ?':cf(h);
+    const rl=S.show==='raw'?rawLabel(p):null;
+    const lab=S.show==='raw'?(rl==null?'#'+(i+1)+' ?':rl):(h==null?'#'+(i+1)+' ?':cf(h));
     ctx.lineWidth=3; ctx.strokeStyle=C.surf; ctx.strokeText(lab,px,py-9);
     ctx.fillStyle=h==null?C.muted:h>0?C.cut:h<0?C.fill:C.ink; ctx.fillText(lab,px,py-9);
   });
 }
 function toPad(e){const r=cv.getBoundingClientRect();return {cx:e.clientX-r.left,cy:e.clientY-r.top,x:(e.clientX-r.left-G.ox)/G.s,y:(e.clientY-r.top-G.oy)/G.s};}
-function hit(cx,cy){let best=null,bd=16*16;for(const p of S.points){const d=(G.ox+p.x*G.s-cx)**2+(G.oy+p.y*G.s-cy)**2;if(d<bd){bd=d;best=p;}}return best;}
+let hitR=16;
+function hit(cx,cy){let best=null,bd=hitR*hitR;for(const p of S.points){const d=(G.ox+p.x*G.s-cx)**2+(G.oy+p.y*G.s-cy)**2;if(d<bd){bd=d;best=p;}}return best;}
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const snapv=v=>S.snap?Math.round(v):Math.round(v*10)/10;
 let drag=null;
 cv.addEventListener('pointerdown',e=>{
+  hitR=e.pointerType==='touch'?24:16;
   const q=toPad(e); const p=hit(q.cx,q.cy);
   drag={p,sx:q.cx,sy:q.cy,moved:false,q}; cv.setPointerCapture(e.pointerId);
 });
 cv.addEventListener('pointermove',e=>{
-  if(!drag||!drag.p) return; const q=toPad(e);
+  if(!drag||!drag.p||S.addMode===false) return; const q=toPad(e);
   if(!drag.moved&&Math.hypot(q.cx-drag.sx,q.cy-drag.sy)>5){drag.moved=true;pushHist();}
   if(drag.moved){drag.p.x=clamp(snapv(q.x),0,S.W);drag.p.y=clamp(snapv(q.y),0,S.L);sel=drag.p.id;refresh(false);}
 });
@@ -435,6 +655,8 @@ cv.addEventListener('pointerup',e=>{
   if(d.p){ sel=d.p.id; refresh(); if(!d.moved) focusEditor(); return; }
   const q=d.q; const tol=10/G.s;
   if(q.x<-tol||q.y<-tol||q.x>S.W+tol||q.y>S.L+tol){sel=null;refresh();return;}
+  // Viewing mode, or a shot is open: a tap on empty space only closes it, never adds a shot
+  if(S.addMode===false||sel!=null){sel=null;refresh();return;}
   pushHist();
   const np={id:uid++,x:clamp(snapv(q.x),0,S.W),y:clamp(snapv(q.y),0,S.L),v:null,rod:null,elev:null,note:'',dir:1};
   S.points.push(np); sel=np.id; S.example=false; refresh(); focusEditor();
@@ -443,22 +665,23 @@ cv.addEventListener('pointerup',e=>{
 /* ===== editor ===== */
 const selP=()=>S.points.find(p=>p.id===sel);
 function focusEditor(){
-  const ed=$('editor'); const f=S.mode==='direct'?$('edMag'):S.mode==='rod'?$('edRodV'):$('edElevV');
+  const ed=$('editor'); const f=S.mode==='direct'?$('edMag'):isRod()?$('edRodV'):$('edElevV');
   setTimeout(()=>{ed.scrollIntoView({block:'nearest',behavior:'smooth'});f.focus({preventScroll:true});f.select&&f.select();},30);
 }
 function fillEditor(){
   const p=selP(); $('editor').hidden=!p; if(!p) return;
   const i=S.points.indexOf(p);
   $('edTitle').textContent='Shot #'+(i+1);
-  $('edDirect').hidden=S.mode!=='direct'; $('edRod').hidden=S.mode!=='rod'; $('edElev').hidden=S.mode!=='elev';
+  $('edDirect').hidden=S.mode!=='direct'; $('edRod').hidden=!isRod(); $('edElev').hidden=S.mode!=='elev';
   const dir=p.v==null?(p.dir||1):(p.v<0?-1:1);
   $('edCut').setAttribute('aria-pressed',dir>0); $('edFill').setAttribute('aria-pressed',dir<0);
   const set=(id,v)=>{const el=$(id); if(document.activeElement!==el) el.value=v==null?'':v;};
   set('edMag',p.v==null?null:Math.abs(p.v)); set('edRodV',p.rod); set('edElevV',p.elev);
   set('edX',p.x); set('edY',p.y); set('edNote',p.note);
+  FI_IDS.forEach(fiSync);
   const h=hOf(p), ro=$('edReadout');
   ro.className='readout'+(h>0?' c':h<0?' f':'');
-  ro.textContent=h==null?(S.mode==='rod'&&num(S.target)==null?'Set target rod':S.mode==='elev'&&num(S.fg)==null?'Set finish grade':'—'):(h>0?'CUT ':h<0?'FILL ':'ON GRADE ')+Math.abs(h).toFixed(2)+' ft · '+inch(h);
+  ro.textContent=h==null?(S.mode==='auto'&&AUTO_T==null?(S.avgMethod==='area'?'Need 3+ shots':'Enter reading'):S.mode==='rod'&&num(S.target)==null?'Set target rod':S.mode==='elev'&&num(S.fg)==null?'Set finish grade':'—'):(h>0?'CUT ':h<0?'FILL ':'ON GRADE ')+L(Math.abs(h))+' · '+alt(h);
 }
 function setDir(d){const p=selP();if(!p)return;p.dir=d;if(p.v!=null)p.v=Math.abs(p.v)*d;refresh();}
 $('edCut').onclick=()=>setDir(1); $('edFill').onclick=()=>setDir(-1);
@@ -474,11 +697,23 @@ $('edDone').onclick=()=>{sel=null;refresh();};
 
 /* ===== setup inputs ===== */
 const bind=(id,key,isNum=true,redraw=true)=>$(id).addEventListener('input',e=>{S[key]=isNum?num(e.target.value):e.target.value;if(key==='W'||key==='L'){if(!(S[key]>0))return;}refresh();});
-bind('W','W');bind('L','L');bind('target','target');bind('fg','fg');
+bind('offset','offset');
+$('avgMethod').addEventListener('change',e=>{S.avgMethod=e.target.value;refresh();});bind('W','W');bind('L','L');bind('target','target');bind('fg','fg');
 ['shrink','swell'].forEach(k=>$(k).addEventListener('input',e=>{S[k]=num(e.target.value);S.soil='custom';$('soil').value='custom';refresh();}));
 $('soil').innerHTML=SOILS.map(s=>'<option value="'+s.id+'">'+s.n+(s.id==='custom'?'':' — shrink '+s.sh+'%, swell '+s.sw+'%')+'</option>').join('');
 $('soil').addEventListener('change',e=>{const s=SOILS.find(x=>x.id===e.target.value);S.soil=s.id;if(s.id!=='custom'){S.shrink=s.sh;S.swell=s.sw;$('shrink').value=s.sh;$('swell').value=s.sw;}refresh();});bind('truck','truck');bind('strip','strip');
 $('mode').addEventListener('change',e=>{S.mode=e.target.value;refresh();});
+FI_IDS.forEach(fiSetup);
+$('openGuide').onclick=()=>{$('guide').hidden=false;$('gpanel').scrollTop=0;$('closeGuide').focus();};
+$('closeGuide').onclick=()=>{$('guide').hidden=true;};
+$('guide').addEventListener('click',e=>{if(e.target.id==='guide')$('guide').hidden=true;
+  const a=e.target.closest('a[href^="#g-"]'); if(a){e.preventDefault(); const t=document.getElementById(a.getAttribute('href').slice(1)); if(t) t.scrollIntoView({behavior:'smooth',block:'start'});}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('guide').hidden)$('guide').hidden=true;});
+$('addMode').onclick=()=>{S.addMode=S.addMode===false;sel=null;if(S.mode==='auto')S.show=S.addMode?'raw':'cf';refresh();toast(S.addMode?'Adding shots: tap the pad to drop one':'Done adding. Tap a shot to see its info');};
+$('showCF').onclick=()=>{S.show='cf';refresh();};
+$('showRaw').onclick=()=>{S.show='raw';refresh();};
+$('uDec').onclick=()=>{S.units='dec';refresh();};
+$('uFI').onclick=()=>{S.units='fi';refresh();};
 $('snap').addEventListener('change',e=>{S.snap=e.target.checked;persist();});
 $('undo').onclick=()=>{if(!history.length){toast('Nothing to undo');return;}S.points=JSON.parse(history.pop());if(!selP())sel=null;refresh();};
 let clearArm=false;
@@ -503,7 +738,8 @@ function renderResults(){
   const cov=r.padA?r.area/r.padA:0;
   let w='';
   const missing=S.points.filter(p=>hOf(p)==null).length;
-  if(S.mode==='rod'&&num(S.target)==null) w='<div class="callout bad">Enter the target rod reading at finish grade.</div>';
+  if(S.mode==='auto'&&AUTO_T==null) w='<div class="callout">'+(S.avgMethod==='area'?'Shoot at least 3 spots with the rod.':'Shoot the pad. Each reading goes into the average.')+'</div>';
+  else if(S.mode==='rod'&&num(S.target)==null) w='<div class="callout bad">Enter the target rod reading at finish grade.</div>';
   else if(S.mode==='elev'&&num(S.fg)==null) w='<div class="callout bad">Enter the finish grade elevation.</div>';
   else if(!ok) w='<div class="callout">Drop at least 3 shots with readings to get volumes.</div>';
   else if(cov<0.98) w='<div class="callout">Shots cover '+(cov*100).toFixed(0)+'% of the pad. Shoot the corners and edges to cover the rest.</div>';
@@ -514,24 +750,24 @@ function renderResults(){
   $('kFill').textContent=ok?fmt0(cy(r.fillV))+' CY':'—';
   $('kCutA').textContent=ok?'over '+fmt0(r.cutA)+' sq ft':'bank (in place)';
   $('kFillA').textContent=ok?'over '+fmt0(r.fillA)+' sq ft':'compacted';
-  $('kAvgC').textContent=ok&&r.cutA>0?(r.cutV/r.cutA).toFixed(2)+' ft':'—';
-  $('kAvgF').textContent=ok&&r.fillA>0?(r.fillV/r.fillA).toFixed(2)+' ft':'—';
-  $('kAvgCi').textContent=ok&&r.cutA>0?inch(r.cutV/r.cutA):'area-weighted';
-  $('kAvgFi').textContent=ok&&r.fillA>0?inch(r.fillV/r.fillA):'area-weighted';
+  $('kAvgC').textContent=ok&&r.cutA>0?L(r.cutV/r.cutA):'—';
+  $('kAvgF').textContent=ok&&r.fillA>0?L(r.fillV/r.fillA):'—';
+  $('kAvgCi').textContent=ok&&r.cutA>0?alt(r.cutV/r.cutA):'area-weighted';
+  $('kAvgFi').textContent=ok&&r.fillA>0?alt(r.fillV/r.fillA):'area-weighted';
   const hs=r.P.map(p=>p.h), mxC=hs.length?Math.max(0,...hs):0, mxF=hs.length?Math.min(0,...hs):0;
   const avgAll=ok?(r.cutV-r.fillV)/r.area:null;
   const fillBank=sh<1?cy(r.fillV)/(1-sh):NaN, net=cy(r.cutV)-fillBank;
   lines($('lines'),[
     ['Pad area',fmt0(r.padA)+' sq ft'],
     ['Area covered by shots',ok?fmt0(r.area)+' sq ft ('+(cov*100).toFixed(0)+'%)':'—'],
-    ['Average over pad (+cut / −fill)',ok?f2(avgAll)+' ft ('+(avgAll>=0?'C ':'F ')+inch(avgAll)+')':'—'],
-    ['Plain average of shots',hs.length?f2(hs.reduce((a,b)=>a+b,0)/hs.length)+' ft':'—'],
-    ['Deepest cut / fill',hs.length?mxC.toFixed(2)+' / '+(-mxF).toFixed(2)+' ft':'—'],
+    ['Average over pad',ok?cf(avgAll)+' ('+alt(avgAll)+')':'—'],
+    ['Plain average of shots',hs.length?cf(hs.reduce((a,b)=>a+b,0)/hs.length):'—'],
+    ['Deepest cut / fill',hs.length?L(mxC)+' / '+L(-mxF):'—'],
     ['Net (cut − fill, no factors)',ok?f2(cy(r.cutV-r.fillV))+' CY':'—'],
     ['Shots used',r.P.length+' of '+S.points.length]
   ]);
   const b=$('balance');
-  if(ok&&r.bal!=null){b.hidden=false;b.innerHTML=Math.abs(r.bal)<0.005?'<b>Pad balances at current grade.</b>':'<b>To balance:</b> '+(r.bal>0?'raise':'lower')+' finish grade '+Math.abs(r.bal).toFixed(2)+' ft ('+inch(r.bal)+')'+(sh?' with '+(sh*100).toFixed(0)+'% shrink.':'.');}
+  if(ok&&r.bal!=null){b.hidden=false;b.innerHTML=Math.abs(r.bal)<0.005?'<b>Pad balances at current grade.</b>':'<b>To balance:</b> '+(r.bal>0?'raise':'lower')+' finish grade '+L(Math.abs(r.bal))+' ('+alt(r.bal)+')'+(sh?' with '+(sh*100).toFixed(0)+'% shrink.':'.');}
   else b.hidden=true;
   // haul
   const truck=num(S.truck), stripIn=num(S.strip)||0, stripB=r.padA*stripIn/12/27;
@@ -552,25 +788,38 @@ function renderResults(){
   lines($('haul'),rows);
 }
 function renderTable(){
-  $('thIn').textContent=S.mode==='direct'?'Entered':S.mode==='rod'?'Rod ft':'Elev ft';
+  $('thIn').textContent=S.mode==='direct'?'Entered':isRod()?'Rod reading':'Elev ft';
+  $('thCF').textContent='Cut/Fill'; $('thAlt').textContent=S.units==='fi'?'Decimal ft':'Inches';
   $('ptCount').textContent=S.points.length+' shot'+(S.points.length===1?'':'s');
-  $('tbody').innerHTML=S.points.map((p,i)=>{const h=hOf(p);const inp=S.mode==='direct'?(p.v==null?'—':cf(p.v)):S.mode==='rod'?(p.rod??'—'):(p.elev??'—');
-    return '<tr data-id="'+p.id+'"'+(p.id===sel?' class="sel"':'')+'><td>'+(i+1)+'</td><td>'+p.x.toFixed(1)+'</td><td>'+p.y.toFixed(1)+'</td><td>'+inp+'</td><td class="'+(h>0?'c-t':h<0?'f-t':'')+'">'+(h==null?'—':cf(h))+'</td><td>'+(h==null?'—':inch(h))+'</td><td style="text-align:left;font-family:var(--f-body)">'+(p.note||'').replace(/</g,'&lt;')+'</td></tr>';}).join('')||'<tr><td colspan="7" style="text-align:left;color:var(--muted)">No shots yet. Tap the pad to add one.</td></tr>';
+  $('tbody').innerHTML=S.points.map((p,i)=>{const h=hOf(p);const inp=rawLabel(p)??'—';
+    return '<tr data-id="'+p.id+'"'+(p.id===sel?' class="sel"':'')+'><td>'+(i+1)+'</td><td>'+p.x.toFixed(1)+'</td><td>'+p.y.toFixed(1)+'</td><td>'+inp+'</td><td class="'+(h>0?'c-t':h<0?'f-t':'')+'">'+(h==null?'—':cf(h))+'</td><td>'+(h==null?'—':alt(h))+'</td><td style="text-align:left;font-family:var(--f-body)">'+(p.note||'').replace(/</g,'&lt;')+'</td></tr>';}).join('')||'<tr><td colspan="7" style="text-align:left;color:var(--muted)">No shots yet. Tap the pad to add one.</td></tr>';
 }
 $('tbody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;sel=+tr.dataset.id;refresh();focusEditor();});
 
 function syncInputs(){
   $('jobName').value=S.name||''; $('W').value=S.W; $('L').value=S.L; $('mode').value=S.mode;
-  $('target').value=S.target??''; $('fg').value=S.fg??''; $('soil').value=S.soil||'custom'; $('shrink').value=S.shrink??''; $('swell').value=S.swell??'';
+  $('target').value=S.target??''; $('offset').value=S.offset??''; $('avgMethod').value=S.avgMethod||'plain'; $('fg').value=S.fg??''; $('soil').value=S.soil||'custom'; $('shrink').value=S.shrink??''; $('swell').value=S.swell??'';
   $('truck').value=S.truck??''; $('strip').value=S.strip??''; $('snap').checked=!!S.snap;
 }
-const hints={direct:'Enter each shot as cut or fill depth in decimal feet (0.50 ft = 6 in).',rod:'Set the target rod reading at finish grade, then enter the rod reading at each shot. Cut/fill = target − reading.',elev:'Enter finish grade elevation, then existing ground elevation at each shot. Cut/fill = existing − finish.'};
+const hints={auto:'No benchmark needed. Set the laser up anywhere and shoot the whole pad. Grade rod = all readings added up ÷ number of shots. Cut/fill at each shot = grade rod − reading. Spread shots evenly (a rough grid) so the average is fair. Area-weighted balance corrects for uneven spacing and shrink if you want it.',direct:'Enter each shot as a cut or fill depth. Use the Ft & tenths / Ft-in switch above the plan to match your rod.',rod:'Set the target rod reading at finish grade, then enter the rod reading at each shot. Cut/fill = target − reading. Ft-in mode takes feet, inches and eighths.',elev:'Enter finish grade elevation, then existing ground elevation at each shot. Cut/fill = existing − finish. Elevations are always entered in decimal feet.'};
 function refresh(full=true){
   if(!(S.W>0))S.W=100; if(!(S.L>0))S.L=100;
   S.points.forEach(p=>{p.x=clamp(p.x,0,S.W);p.y=clamp(p.y,0,S.L);});
-  $('targetWrap').hidden=S.mode!=='rod'; $('fgWrap').hidden=S.mode!=='elev'; $('modeHint').textContent=hints[S.mode];
+  $('targetWrap').hidden=S.mode!=='rod'; $('offWrap').hidden=S.mode!=='auto'; $('avgWrap').hidden=S.mode!=='auto'; $('fgWrap').hidden=S.mode!=='elev'; $('modeHint').textContent=hints[S.mode];
   $('exampleTag').hidden=!S.example;
-  compute(); draw(); fillEditor();
+  if(!S.units)S.units='dec'; if(!S.show)S.show='cf';
+  $('showCF').setAttribute('aria-pressed',S.show!=='raw'); $('showRaw').setAttribute('aria-pressed',S.show==='raw');
+  $('uDec').setAttribute('aria-pressed',S.units!=='fi'); $('uFI').setAttribute('aria-pressed',S.units==='fi');
+  fiSync('target');
+  const adding=S.addMode!==false;
+  $('addMode').textContent=adding?'Done adding':'+ Add shots';
+  $('addMode').className=adding?'primary':'';
+  $('planHint').textContent=adding?'Tap empty space = new shot · Tap shot = edit · Drag shot = move · With a shot open, tapping empty space just closes it':'Viewing: tap a shot to see its info. Shots can\'t be added or moved until you hit + Add shots.';
+  cv.style.cursor=adding?'crosshair':'pointer';
+  compute();
+  const ao=$('autoOut'); ao.hidden=S.mode!=='auto';
+  if(S.mode==='auto') ao.innerHTML=AUTO_T==null?(S.avgMethod==='area'?'Grade rod: <b>need 3+ shots</b>':'Grade rod: <b>shoot the pad</b>'):'<b>Grade rod: '+L(AUTO_T)+'</b> ('+alt(AUTO_T)+')'+(S.avgMethod==='area'?' · area-weighted balance':' · average of '+AUTO_N+' shot'+(AUTO_N===1?'':'s'))+((num(S.offset)||0)?' · includes your '+((num(S.offset)>0)?'raise':'lower')+' of '+L(Math.abs(num(S.offset))):'')+'<br><span class="hint">Cut/fill at each shot = grade rod − shot reading. Finish shooting the whole pad before you trust it; it changes with every shot. Hit Done adding to flip the labels to cut/fill.</span>';
+  draw(); fillEditor();
   if(full){renderResults();renderTable();}
   else{renderResults();}
   persist();
@@ -587,5 +836,6 @@ new MutationObserver(()=>draw()).observe(document.documentElement,{attributes:tr
 syncInputs(); renderJobs(); refresh();
 document.fonts&&document.fonts.ready.then(()=>draw());
 </script>
+
 </body>
 </html>
