@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Pad Cut/Fill Mapper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: plan sheet (pad canvas + shot editor) on the left, setup / results / shot log on the right; stacks on phones. */
+:root{
+  --bg:#e9ecea; --surface:#f8faf9; --sunk:#dfe4e1; --ink:#1b2220; --muted:#5a6661; --line:#cdd4d0;
+  --cut:#c4352c; --fill:#2560a6; --accent:#c98a00; --accent-ink:#1b1606; --ok:#2f7d4f;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#131816; --surface:#1b2220; --sunk:#232c29; --ink:#e4eae7; --muted:#97a39e; --line:#34403b;
+  --cut:#f06a5f; --fill:#5d9ce8; --accent:#f2b705; --accent-ink:#1b1606; --ok:#5cc489; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131816; --surface:#1b2220; --sunk:#232c29; --ink:#e4eae7; --muted:#97a39e; --line:#34403b;
+  --cut:#f06a5f; --fill:#5d9ce8; --accent:#f2b705; --accent-ink:#1b1606; --ok:#5cc489; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);padding-inline:16px;padding-block:14px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
+h1{font:700 30px/1 var(--f-display);letter-spacing:.01em;margin:0;text-transform:uppercase}
+h1 span{color:var(--accent)}
+h2{font:700 15px/1 var(--f-display);text-transform:uppercase;letter-spacing:.08em;margin:0;color:var(--muted)}
+.sub{color:var(--muted);font-size:13px;margin:4px 0 0}
+.jobbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.main{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:12px;min-width:0}
+.side{display:grid;gap:14px;min-width:0}
+label{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.03em;text-transform:uppercase;display:grid;gap:4px}
+input,select{font:500 15px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:7px 8px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type=text]{font-family:var(--f-body)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+button{font:600 14px var(--f-body);border-radius:4px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.danger{color:var(--cut)}
+button.warn{background:var(--cut);border-color:var(--cut);color:#fff}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--surface)}
+.seg button.c[aria-pressed=true]{background:var(--cut);color:#fff}
+.seg button.f[aria-pressed=true]{background:var(--fill);color:#fff}
+.planhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px}
+.hint{font-size:13px;color:var(--muted)}
+.canvasbox{position:relative;width:100%}
+canvas{display:block;width:100%;touch-action:none;border-radius:4px;background:var(--bg);cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.editor{border:1px solid var(--accent);border-radius:var(--r);padding:12px;display:grid;gap:10px;background:var(--bg)}
+.editor .row{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.editor .row > label{flex:1 1 110px}
+.readout{font:600 22px/1 var(--f-display);letter-spacing:.02em}
+.readout.c{color:var(--cut)} .readout.f{color:var(--fill)}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.kpi{background:var(--surface);padding:10px 12px;display:grid;gap:2px}
+.kpi b{font:700 26px/1.05 var(--f-display);font-variant-numeric:tabular-nums}
+.kpi small{font-size:12px;color:var(--muted)}
+.kpi .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.c-t{color:var(--cut)} .f-t{color:var(--fill)}
+.lines{display:grid;gap:0;font-size:14px}
+.lines div{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.lines div:last-child{border-bottom:0}
+.lines span:last-child{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.callout{border-left:3px solid var(--accent);padding:8px 10px;background:var(--bg);font-size:14px;border-radius:0 4px 4px 0}
+.callout.bad{border-color:var(--cut)}
+.tablebox{overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font:13px var(--f-mono);font-variant-numeric:tabular-nums}
+th{font:600 11px var(--f-body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:right;padding:6px 8px;position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line)}
+td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+tr.sel td{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+tbody tr{cursor:pointer}
+details summary{cursor:pointer;font-weight:600}
+details{font-size:14px}
+details p,details li{color:var(--muted)}
+.formula{font-family:var(--f-mono);font-size:13px;color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:4px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.example{font:600 11px var(--f-body);text-transform:uppercase;letter-spacing:.08em;background:var(--accent);color:var(--accent-ink);padding:2px 6px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Pad Cut<span>/</span>Fill Mapper</h1>
+      <p class="sub">Tap anywhere on the pad to drop a shot. Volumes are figured by triangulating between your shots (TIN method).</p>
+    </div>
+    <div class="jobbar">
+      <input id="jobName" type="text" placeholder="Job name" style="width:170px" aria-label="Job name">
+      <button id="saveJob" class="primary">Save job</button>
+      <select id="jobList" aria-label="Saved jobs" style="width:160px"></select>
+      <button id="newJob">New pad</button>
+      <button id="delJob" class="danger">Delete</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="card">
+      <div class="planhead">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <h2>Pad plan</h2><span id="exampleTag" class="example" hidden>Example data</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:13px"><input id="snap" type="checkbox" style="width:auto"> Snap to 1 ft</label>
+          <button id="undo">Undo</button>
+          <button id="clearPts" class="danger">Clear shots</button>
+        </div>
+      </div>
+      <div class="canvasbox"><canvas id="cv" aria-label="Pad plan. Tap to add a shot, drag a shot to move it."></canvas></div>
+      <div class="legend">
+        <span><i style="background:var(--cut)"></i>Cut (take down)</span>
+        <span><i style="background:var(--fill)"></i>Fill (bring up)</span>
+        <span><i style="border:1.5px dashed var(--ink);background:transparent"></i>Grade line (0.00)</span>
+        <span class="hint">Tap empty space = new shot · Tap shot = edit · Drag shot = move</span>
+      </div>
+
+      <div id="editor" class="editor" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 id="edTitle">Shot</h2>
+          <div id="edReadout" class="readout">—</div>
+        </div>
+        <div id="edDirect" class="row">
+          <div class="seg" role="group" aria-label="Cut or fill">
+            <button id="edCut" class="c" aria-pressed="true">Cut</button>
+            <button id="edFill" class="f" aria-pressed="false">Fill</button>
+          </div>
+          <label>Depth (ft)<input id="edMag" type="number" inputmode="decimal" step="0.01" min="0"></label>
+        </div>
+        <div id="edRod" class="row" hidden>
+          <label>Rod reading (ft)<input id="edRodV" type="number" inputmode="decimal" step="0.01"></label>
+        </div>
+        <div id="edElev" class="row" hidden>
+          <label>Existing ground elev (ft)<input id="edElevV" type="number" inputmode="decimal" step="0.01"></label>
+        </div>
+        <div class="row">
+          <label>X (ft from left)<input id="edX" type="number" inputmode="decimal" step="0.1"></label>
+          <label>Y (ft from top)<input id="edY" type="number" inputmode="decimal" step="0.1"></label>
+          <label style="flex:2 1 160px">Note<input id="edNote" type="text" placeholder="e.g. NE corner, stake 4"></label>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <button id="edDel" class="danger">Delete shot</button>
+          <button id="edDone" class="primary">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="side">
+      <section class="card">
+        <h2>Pad setup</h2>
+        <div class="fields">
+          <label>Pad width (ft)<input id="W" type="number" inputmode="decimal" min="1" step="1"></label>
+          <label>Pad length (ft)<input id="L" type="number" inputmode="decimal" min="1" step="1"></label>
+        </div>
+        <label>How are you shooting it?
+          <select id="mode">
+            <option value="direct">Cut/fill numbers (off stakes or grade checker)</option>
+            <option value="rod">Laser + rod readings</option>
+            <option value="elev">Ground elevations (rover / total station / plans)</option>
+          </select>
+        </label>
+        <div class="fields">
+          <label id="targetWrap" hidden>Target rod at finish grade (ft)<input id="target" type="number" inputmode="decimal" step="0.01"></label>
+          <label id="fgWrap" hidden>Finish grade elev (ft)<input id="fg" type="number" inputmode="decimal" step="0.01"></label>
+        </div>
+        <p id="modeHint" class="hint" style="margin:0"></p>
+      </section>
+
+      <section class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <h2>Results</h2>
+          <button id="copy">Copy summary</button>
+        </div>
+        <div id="warn"></div>
+        <div class="kpis">
+          <div class="kpi"><span class="k">Cut</span><b id="kCut" class="c-t">—</b><small id="kCutA">—</small></div>
+          <div class="kpi"><span class="k">Fill</span><b id="kFill" class="f-t">—</b><small id="kFillA">—</small></div>
+          <div class="kpi"><span class="k">Avg cut depth</span><b id="kAvgC" class="c-t">—</b><small id="kAvgCi">—</small></div>
+          <div class="kpi"><span class="k">Avg fill depth</span><b id="kAvgF" class="f-t">—</b><small id="kAvgFi">—</small></div>
+        </div>
+        <div class="lines" id="lines"></div>
+        <div id="balance" class="callout" hidden></div>
+      </section>
+
+      <section class="card">
+        <h2>Earthwork factors</h2>
+        <label>Soil type
+          <select id="soil"></select>
+        </label>
+        <div class="fields">
+          <label>Shrink % (bank→compacted)<input id="shrink" type="number" inputmode="decimal" min="-50" max="60" step="1"></label>
+          <label>Swell % (bank→loose)<input id="swell" type="number" inputmode="decimal" min="0" max="100" step="1"></label>
+          <label>Truck load (loose CY)<input id="truck" type="number" inputmode="decimal" min="0" step="1"></label>
+          <label>Strip depth (in)<input id="strip" type="number" inputmode="decimal" min="0" step="1"></label>
+        </div>
+        <p class="hint" style="margin:0">Soil presets fill in shrink and swell from <a href="https://highways.fhwa.dot.gov/federal-lands/pddm/dpg/earthwork-design" target="_blank" rel="noopener" style="color:inherit">FHWA Project Development &amp; Design Manual, Exhibit 5.1 A</a>. FHWA notes these are averages and can vary ±33%. Use your geotech or compaction report when you have one. Typing your own numbers switches the soil type to Custom. A negative shrink means the material bulks up even after compaction (rocky material).</p>
+        <div class="lines" id="haul"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h2>Shot log</h2><span class="hint" id="ptCount"></span>
+    </div>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>#</th><th>X ft</th><th>Y ft</th><th id="thIn">Input</th><th>Cut/Fill ft</th><th>Inches</th><th>Note</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>How the numbers are figured</summary>
+      <ul>
+        <li><b>Cut/fill at a shot.</b> Cut is positive, fill is negative.<br>
+          Laser: <span class="formula">cut/fill = target rod − rod reading</span> (rod reads shorter than target = high ground = cut).<br>
+          Elevations: <span class="formula">cut/fill = existing elev − finish grade elev</span>.</li>
+        <li><b>Surface.</b> Shots are joined into non-overlapping triangles (Delaunay triangulation, the same TIN surface method used in civil design software). Cut/fill is treated as varying in a straight line across each triangle.</li>
+        <li><b>Volume.</b> Each triangle: <span class="formula">area × average of its 3 corner depths</span>. A triangle that crosses grade is split on the 0.00 line so cut and fill are counted separately. <span class="formula">CY = cu ft ÷ 27</span>.</li>
+        <li><b>Average depths</b> are area-weighted: <span class="formula">avg cut = cut volume ÷ cut area</span>. Bunched-up shots don't skew it the way a plain average would.</li>
+        <li><b>Shrink/swell.</b> <span class="formula">bank CY needed for fill = compacted fill CY ÷ (1 − shrink)</span>, <span class="formula">loose CY = bank CY × (1 + swell)</span>, <span class="formula">loads = loose CY ÷ truck load</span>, rounded up.</li>
+        <li><b>Balance grade.</b> The page moves the whole finish grade up or down until cut equals shrink-adjusted fill and reports the change.</li>
+        <li><b>Coverage.</b> Volumes only count the area inside your outermost shots. Shoot the pad corners and edges to cover the whole pad.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+/* ===== core math (pure) ===== */
+function delaunay(P){
+  const n=P.length; if(n<3) return [];
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const p of P){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}
+  const d=Math.max(maxX-minX,maxY-minY)||1, mx=(minX+maxX)/2, my=(minY+maxY)/2;
+  const V=P.map(p=>({x:p.x,y:p.y})).concat([{x:mx-30*d,y:my-30*d},{x:mx,y:my+30*d},{x:mx+30*d,y:my-30*d}]);
+  function circ(a,b,c){
+    const A=V[a],B=V[b],C=V[c];
+    const D=2*(A.x*(B.y-C.y)+B.x*(C.y-A.y)+C.x*(A.y-B.y));
+    if(Math.abs(D)<1e-12) return {x:0,y:0,r2:Infinity};
+    const a2=A.x*A.x+A.y*A.y,b2=B.x*B.x+B.y*B.y,c2=C.x*C.x+C.y*C.y;
+    const ux=(a2*(B.y-C.y)+b2*(C.y-A.y)+c2*(A.y-B.y))/D, uy=(a2*(C.x-B.x)+b2*(A.x-C.x)+c2*(B.x-A.x))/D;
+    return {x:ux,y:uy,r2:(A.x-ux)**2+(A.y-uy)**2};
+  }
+  let T=[{v:[n,n+1,n+2],c:circ(n,n+1,n+2)}];
+  for(let i=0;i<n;i++){
+    const p=V[i], bad=[], keep=[];
+    for(const t of T){ ((p.x-t.c.x)**2+(p.y-t.c.y)**2 < t.c.r2*(1+1e-12) ? bad:keep).push(t); }
+    const em=new Map();
+    for(const t of bad){ for(let k=0;k<3;k++){ const a=t.v[k],b=t.v[(k+1)%3]; const key=a<b?a+','+b:b+','+a; em.set(key,(em.get(key)||{a,b,n:0})); em.get(key).n++; } }
+    for(const e of em.values()){ if(e.n===1) keep.push({v:[e.a,e.b,i],c:circ(e.a,e.b,i)}); }
+    T=keep;
+  }
+  return T.filter(t=>t.v.every(k=>k<n)).map(t=>t.v).filter(([a,b,c])=>Math.abs((P[b].x-P[a].x)*(P[c].y-P[a].y)-(P[c].x-P[a].x)*(P[b].y-P[a].y))>1e-9);
+}
+function clipPart(v,sign){
+  const out=[];
+  for(let i=0;i<v.length;i++){
+    const a=v[i],b=v[(i+1)%v.length], ha=sign*a.h, hb=sign*b.h;
+    if(ha>=0) out.push({x:a.x,y:a.y,h:ha});
+    if((ha>0&&hb<0)||(ha<0&&hb>0)){ const t=ha/(ha-hb); out.push({x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y),h:0}); }
+  }
+  return out;
+}
+function polyVA(poly){
+  let A=0,Vol=0;
+  for(let k=1;k<poly.length-1;k++){
+    const p=poly[0],q=poly[k],r=poly[k+1];
+    const ar=Math.abs((q.x-p.x)*(r.y-p.y)-(r.x-p.x)*(q.y-p.y))/2;
+    A+=ar; Vol+=ar*(p.h+q.h+r.h)/3;
+  }
+  return [A,Vol];
+}
+function volumes(P,tris,shift){ // P:[{x,y,h}], shift: raise finish grade by this many ft
+  let cutV=0,fillV=0,cutA=0,fillA=0,area=0;
+  for(const [a,b,c] of tris){
+    const v=[P[a],P[b],P[c]].map(p=>({x:p.x,y:p.y,h:p.h-shift}));
+    const cp=polyVA(clipPart(v,1)), fp=polyVA(clipPart(v,-1));
+    cutA+=cp[0];cutV+=cp[1];fillA+=fp[0];fillV+=fp[1];
+    area+=Math.abs((v[1].x-v[0].x)*(v[2].y-v[0].y)-(v[2].x-v[0].x)*(v[1].y-v[0].y))/2;
+  }
+  return {cutV,fillV,cutA,fillA,area};
+}
+function balanceShift(P,tris,shrink){
+  const f=s=>{const r=volumes(P,tris,s);return r.cutV-r.fillV/(1-shrink);};
+  let lo=Math.min(...P.map(p=>p.h)), hi=Math.max(...P.map(p=>p.h));
+  if(f(lo)<0||f(hi)>0) return null;
+  for(let i=0;i<50;i++){const m=(lo+hi)/2; if(f(m)>0) lo=m; else hi=m;}
+  return (lo+hi)/2;
+}
+/* ===== end core math ===== */
+
+const $=id=>document.getElementById(id);
+/* FHWA PDDM Exhibit 5.1 A. sh = shrink % bank→embankment (FHWA lists as negative swell), sw = swell % bank→loose */
+const SOILS=[
+ {id:'custom',n:'Custom (enter your own)'},
+ {id:'clay-dry',n:'Clay, dry',sh:10,sw:50},{id:'clay-damp',n:'Clay, damp',sh:10,sw:67},
+ {id:'gumbo-dry',n:'Gumbo, dry',sh:10,sw:50},{id:'gumbo-wet',n:'Gumbo, wet',sh:10,sw:67},
+ {id:'loess-dry',n:'Loess, dry',sh:10,sw:50},{id:'loess-wet',n:'Loess, wet',sh:10,sw:67},
+ {id:'loam-dry',n:'Earth/loam, dry',sh:12,sw:50},{id:'loam-damp',n:'Earth/loam, damp',sh:4,sw:43},{id:'loam-mud',n:'Earth/loam, wet (mud)',sh:20,sw:0},
+ {id:'silt',n:'Silt',sh:17,sw:36},{id:'topsoil',n:'Topsoil',sh:26,sw:56},{id:'caliche',n:'Caliche',sh:25,sw:16},
+ {id:'sand-dry',n:'Sand, dry',sh:11,sw:11},{id:'sand-wet',n:'Sand, wet',sh:11,sw:5},
+ {id:'gr-du',n:'Gravel, dry, uniformly graded',sh:5,sw:10},{id:'gr-da',n:'Gravel, dry, avg gradation',sh:8,sw:20},{id:'gr-dw',n:'Gravel, dry, well graded',sh:11,sw:33},
+ {id:'gr-wu',n:'Gravel, wet, uniformly graded',sh:5,sw:5},{id:'gr-wa',n:'Gravel, wet, avg gradation',sh:2,sw:10},{id:'gr-ww',n:'Gravel, wet, well graded',sh:1,sw:16},
+ {id:'dr-25',n:'Decomposed rock, 25% rock / 75% earth',sh:9,sw:43},{id:'dr-50',n:'Decomposed rock, 50% rock / 50% earth',sh:6,sw:38},{id:'dr-75',n:'Decomposed rock, 75% rock / 25% earth',sh:-12,sw:31}
+];
+const LS={get(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}};
+let uid=1;
+function example(){
+  const s={name:'Example pad 120×80',example:true,W:120,L:80,mode:'direct',target:5.5,fg:100,soil:'clay-dry',shrink:10,swell:50,truck:12,strip:4,snap:false,points:[]};
+  const shots=[[0,0,1.20],[60,0,0.85],[120,0,0.40],[0,40,0.70],[38,32,0.35],[80,44,-0.15],[120,40,-0.30],[0,80,0.10],[55,80,-0.45],[120,80,-0.90],[95,68,-0.70],[22,62,0.25],[100,15,0.10],[65,58,-0.30]];
+  for(const [x,y,v] of shots) s.points.push({id:uid++,x,y,v,rod:+(5.5-v).toFixed(2),elev:+(100+v).toFixed(2),note:''});
+  return s;
+}
+function blank(){return {name:'',example:false,W:100,L:100,mode:'direct',target:'',fg:'',soil:'custom',shrink:0,swell:0,truck:12,strip:0,snap:false,points:[]};}
+let S=LS.get('padcf.current')||example();
+S.points.forEach(p=>uid=Math.max(uid,p.id+1));
+let sel=null, history=[];
+const num=v=>{const n=parseFloat(v);return Number.isFinite(n)?n:null;};
+function hOf(p){
+  if(S.mode==='direct') return num(p.v);
+  if(S.mode==='rod'){const t=num(S.target),r=num(p.rod);return t==null||r==null?null:t-r;}
+  const g=num(S.fg),e=num(p.elev);return g==null||e==null?null:e-g;
+}
+function pushHist(){history.push(JSON.stringify(S.points));if(history.length>60)history.shift();}
+function persist(){LS.set('padcf.current',S);}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1600);}
+const f2=n=>(n<0?'−':'')+Math.abs(n).toFixed(2);
+const inch=ft=>(Math.abs(ft)*12).toFixed(1)+' in';
+const cy=cf=>cf/27;
+const fmt0=n=>Math.round(n).toLocaleString();
+const cf=h=>h>0?'C '+h.toFixed(2):h<0?'F '+(-h).toFixed(2):'0.00';
+
+/* ===== compute ===== */
+let R=null;
+function compute(){
+  const seen=new Set(), P=[];
+  for(const p of S.points){const h=hOf(p); if(h==null) continue; const k=p.x.toFixed(3)+','+p.y.toFixed(3); if(seen.has(k)) continue; seen.add(k); P.push({x:p.x,y:p.y,h,id:p.id});}
+  const tris=delaunay(P);
+  const v=volumes(P,tris,0);
+  const padA=S.W*S.L;
+  const sh=(num(S.shrink)||0)/100, sw=(num(S.swell)||0)/100;
+  R={P,tris,...v,padA,sh,sw,bal:tris.length&&sh<1?balanceShift(P,tris,sh):null};
+}
+
+/* ===== canvas ===== */
+const cv=$('cv'), ctx=cv.getContext('2d');
+let G={s:1,ox:0,oy:0};
+function tok(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function niceStep(x){const c=[1,2,5,10,20,25,50,100,200,500,1000];return c.find(v=>v>=x)||1000;}
+function draw(){
+  const box=cv.parentElement.getBoundingClientRect(), cw=box.width;
+  const ml=44,mr=14,mt=14,mb=30, maxH=Math.max(260,window.innerHeight*0.62);
+  const s=Math.min((cw-ml-mr)/S.W,(maxH-mt-mb)/S.L);
+  const ch=S.L*s+mt+mb, dpr=window.devicePixelRatio||1;
+  cv.style.height=ch+'px'; cv.width=Math.round(cw*dpr); cv.height=Math.round(ch*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const ox=ml+((cw-ml-mr)-S.W*s)/2, oy=mt; G={s,ox,oy};
+  const C={ink:tok('--ink'),muted:tok('--muted'),line:tok('--line'),surf:tok('--surface'),cut:tok('--cut'),fill:tok('--fill'),acc:tok('--accent')};
+  const X=x=>ox+x*s, Y=y=>oy+y*s;
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle=C.surf; ctx.fillRect(X(0),Y(0),S.W*s,S.L*s);
+  // grid
+  const st=niceStep(Math.max(S.W,S.L)/8);
+  ctx.strokeStyle=C.line; ctx.lineWidth=1; ctx.fillStyle=C.muted; ctx.font='11px "IBM Plex Mono",monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let x=0;x<=S.W+1e-9;x+=st){ctx.beginPath();ctx.moveTo(X(x)+.5,Y(0));ctx.lineTo(X(x)+.5,Y(S.L));ctx.stroke();ctx.fillText(x+"'",X(x),Y(S.L)+6);}
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  for(let y=0;y<=S.L+1e-9;y+=st){ctx.beginPath();ctx.moveTo(X(0),Y(y)+.5);ctx.lineTo(X(S.W),Y(y)+.5);ctx.stroke();ctx.fillText(y+"'",X(0)-6,Y(y));}
+  // TIN shading
+  const P=R.P, maxAbs=Math.max(0.01,...P.map(p=>Math.abs(p.h)));
+  for(const t of R.tris){
+    const v=t.map(i=>P[i]);
+    for(const [sign,col] of [[1,C.cut],[-1,C.fill]]){
+      const poly=clipPart(v,sign); if(poly.length<3) continue;
+      const [a,vol]=polyVA(poly); if(a<1e-9) continue;
+      ctx.globalAlpha=0.12+0.5*Math.min(1,(vol/a)/maxAbs);
+      ctx.fillStyle=col; ctx.beginPath(); poly.forEach((p,k)=>k?ctx.lineTo(X(p.x),Y(p.y)):ctx.moveTo(X(p.x),Y(p.y))); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha=0.35; ctx.strokeStyle=C.ink; ctx.lineWidth=.6;
+    ctx.beginPath(); ctx.moveTo(X(v[0].x),Y(v[0].y)); ctx.lineTo(X(v[1].x),Y(v[1].y)); ctx.lineTo(X(v[2].x),Y(v[2].y)); ctx.closePath(); ctx.stroke();
+    ctx.globalAlpha=1;
+    // grade line
+    const z=[]; for(let k=0;k<3;k++){const a=v[k],b=v[(k+1)%3]; if((a.h>0&&b.h<0)||(a.h<0&&b.h>0)){const u=a.h/(a.h-b.h);z.push([a.x+u*(b.x-a.x),a.y+u*(b.y-a.y)]);}}
+    if(z.length===2){ctx.setLineDash([5,4]);ctx.strokeStyle=C.ink;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(X(z[0][0]),Y(z[0][1]));ctx.lineTo(X(z[1][0]),Y(z[1][1]));ctx.stroke();ctx.setLineDash([]);}
+  }
+  ctx.strokeStyle=C.ink; ctx.lineWidth=1.5; ctx.strokeRect(X(0),Y(0),S.W*s,S.L*s);
+  // points
+  ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.font='600 12px "IBM Plex Mono",monospace';
+  S.points.forEach((p,i)=>{
+    const h=hOf(p), px=X(p.x), py=Y(p.y);
+    if(p.id===sel){ctx.beginPath();ctx.arc(px,py,12,0,7);ctx.strokeStyle=C.acc;ctx.lineWidth=3;ctx.stroke();}
+    ctx.beginPath(); ctx.arc(px,py,6.5,0,7);
+    ctx.fillStyle=h==null?C.muted:h>0?C.cut:h<0?C.fill:C.ink; ctx.fill();
+    ctx.strokeStyle=C.surf; ctx.lineWidth=2; ctx.stroke();
+    const lab=h==null?'#'+(i+1)+' ?':cf(h);
+    ctx.lineWidth=3; ctx.strokeStyle=C.surf; ctx.strokeText(lab,px,py-9);
+    ctx.fillStyle=h==null?C.muted:h>0?C.cut:h<0?C.fill:C.ink; ctx.fillText(lab,px,py-9);
+  });
+}
+function toPad(e){const r=cv.getBoundingClientRect();return {cx:e.clientX-r.left,cy:e.clientY-r.top,x:(e.clientX-r.left-G.ox)/G.s,y:(e.clientY-r.top-G.oy)/G.s};}
+function hit(cx,cy){let best=null,bd=16*16;for(const p of S.points){const d=(G.ox+p.x*G.s-cx)**2+(G.oy+p.y*G.s-cy)**2;if(d<bd){bd=d;best=p;}}return best;}
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const snapv=v=>S.snap?Math.round(v):Math.round(v*10)/10;
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  const q=toPad(e); const p=hit(q.cx,q.cy);
+  drag={p,sx:q.cx,sy:q.cy,moved:false,q}; cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag||!drag.p) return; const q=toPad(e);
+  if(!drag.moved&&Math.hypot(q.cx-drag.sx,q.cy-drag.sy)>5){drag.moved=true;pushHist();}
+  if(drag.moved){drag.p.x=clamp(snapv(q.x),0,S.W);drag.p.y=clamp(snapv(q.y),0,S.L);sel=drag.p.id;refresh(false);}
+});
+cv.addEventListener('pointerup',e=>{
+  if(!drag) return; const d=drag; drag=null;
+  if(d.p){ sel=d.p.id; refresh(); if(!d.moved) focusEditor(); return; }
+  const q=d.q; const tol=10/G.s;
+  if(q.x<-tol||q.y<-tol||q.x>S.W+tol||q.y>S.L+tol){sel=null;refresh();return;}
+  pushHist();
+  const np={id:uid++,x:clamp(snapv(q.x),0,S.W),y:clamp(snapv(q.y),0,S.L),v:null,rod:null,elev:null,note:'',dir:1};
+  S.points.push(np); sel=np.id; S.example=false; refresh(); focusEditor();
+});
+
+/* ===== editor ===== */
+const selP=()=>S.points.find(p=>p.id===sel);
+function focusEditor(){
+  const ed=$('editor'); const f=S.mode==='direct'?$('edMag'):S.mode==='rod'?$('edRodV'):$('edElevV');
+  setTimeout(()=>{ed.scrollIntoView({block:'nearest',behavior:'smooth'});f.focus({preventScroll:true});f.select&&f.select();},30);
+}
+function fillEditor(){
+  const p=selP(); $('editor').hidden=!p; if(!p) return;
+  const i=S.points.indexOf(p);
+  $('edTitle').textContent='Shot #'+(i+1);
+  $('edDirect').hidden=S.mode!=='direct'; $('edRod').hidden=S.mode!=='rod'; $('edElev').hidden=S.mode!=='elev';
+  const dir=p.v==null?(p.dir||1):(p.v<0?-1:1);
+  $('edCut').setAttribute('aria-pressed',dir>0); $('edFill').setAttribute('aria-pressed',dir<0);
+  const set=(id,v)=>{const el=$(id); if(document.activeElement!==el) el.value=v==null?'':v;};
+  set('edMag',p.v==null?null:Math.abs(p.v)); set('edRodV',p.rod); set('edElevV',p.elev);
+  set('edX',p.x); set('edY',p.y); set('edNote',p.note);
+  const h=hOf(p), ro=$('edReadout');
+  ro.className='readout'+(h>0?' c':h<0?' f':'');
+  ro.textContent=h==null?(S.mode==='rod'&&num(S.target)==null?'Set target rod':S.mode==='elev'&&num(S.fg)==null?'Set finish grade':'—'):(h>0?'CUT ':h<0?'FILL ':'ON GRADE ')+Math.abs(h).toFixed(2)+' ft · '+inch(h);
+}
+function setDir(d){const p=selP();if(!p)return;p.dir=d;if(p.v!=null)p.v=Math.abs(p.v)*d;refresh();}
+$('edCut').onclick=()=>setDir(1); $('edFill').onclick=()=>setDir(-1);
+$('edMag').addEventListener('input',e=>{const p=selP();if(!p)return;const m=num(e.target.value);const d=p.v!=null?(p.v<0?-1:1):(p.dir||1);p.v=m==null?null:Math.abs(m)*d;refresh();});
+$('edRodV').addEventListener('input',e=>{const p=selP();if(p){p.rod=num(e.target.value);refresh();}});
+$('edElevV').addEventListener('input',e=>{const p=selP();if(p){p.elev=num(e.target.value);refresh();}});
+$('edX').addEventListener('input',e=>{const p=selP();const v=num(e.target.value);if(p&&v!=null){p.x=clamp(v,0,S.W);refresh();}});
+$('edY').addEventListener('input',e=>{const p=selP();const v=num(e.target.value);if(p&&v!=null){p.y=clamp(v,0,S.L);refresh();}});
+$('edNote').addEventListener('input',e=>{const p=selP();if(p){p.note=e.target.value;refresh();}});
+$('edDel').onclick=()=>{pushHist();S.points=S.points.filter(p=>p.id!==sel);sel=null;refresh();};
+$('edDone').onclick=()=>{sel=null;refresh();};
+['edMag','edRodV','edElevV','edNote'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){sel=null;refresh();toast('Shot saved. Tap the pad for the next one.');}}));
+
+/* ===== setup inputs ===== */
+const bind=(id,key,isNum=true,redraw=true)=>$(id).addEventListener('input',e=>{S[key]=isNum?num(e.target.value):e.target.value;if(key==='W'||key==='L'){if(!(S[key]>0))return;}refresh();});
+bind('W','W');bind('L','L');bind('target','target');bind('fg','fg');
+['shrink','swell'].forEach(k=>$(k).addEventListener('input',e=>{S[k]=num(e.target.value);S.soil='custom';$('soil').value='custom';refresh();}));
+$('soil').innerHTML=SOILS.map(s=>'<option value="'+s.id+'">'+s.n+(s.id==='custom'?'':' — shrink '+s.sh+'%, swell '+s.sw+'%')+'</option>').join('');
+$('soil').addEventListener('change',e=>{const s=SOILS.find(x=>x.id===e.target.value);S.soil=s.id;if(s.id!=='custom'){S.shrink=s.sh;S.swell=s.sw;$('shrink').value=s.sh;$('swell').value=s.sw;}refresh();});bind('truck','truck');bind('strip','strip');
+$('mode').addEventListener('change',e=>{S.mode=e.target.value;refresh();});
+$('snap').addEventListener('change',e=>{S.snap=e.target.checked;persist();});
+$('undo').onclick=()=>{if(!history.length){toast('Nothing to undo');return;}S.points=JSON.parse(history.pop());if(!selP())sel=null;refresh();};
+let clearArm=false;
+$('clearPts').onclick=e=>{if(!clearArm){clearArm=true;e.target.textContent='Tap again to clear';e.target.classList.add('warn');setTimeout(()=>{clearArm=false;e.target.textContent='Clear shots';e.target.classList.remove('warn');},2500);return;}pushHist();S.points=[];sel=null;clearArm=false;e.target.textContent='Clear shots';e.target.classList.remove('warn');refresh();};
+
+/* ===== jobs ===== */
+function jobs(){return LS.get('padcf.jobs')||{};}
+function renderJobs(){const j=jobs();const names=Object.keys(j).sort();$('jobList').innerHTML='<option value="">Saved jobs ('+names.length+')</option>'+names.map(n=>'<option>'+n.replace(/</g,'&lt;')+'</option>').join('');}
+$('jobName').addEventListener('input',e=>{S.name=e.target.value;persist();});
+$('saveJob').onclick=()=>{const n=(S.name||'').trim();if(!n){toast('Name the job first');$('jobName').focus();return;}const j=jobs();S.example=false;j[n]=S;if(LS.set('padcf.jobs',j)){toast('Saved "'+n+'" on this device');}else toast('This browser blocked saving');renderJobs();refresh();};
+$('jobList').addEventListener('change',e=>{const n=e.target.value;if(!n)return;const j=jobs()[n];if(j){S=j;S.points.forEach(p=>uid=Math.max(uid,p.id+1));sel=null;history=[];syncInputs();refresh();toast('Loaded "'+n+'"');}e.target.value='';});
+$('newJob').onclick=()=>{S=blank();sel=null;history=[];syncInputs();refresh();$('jobName').focus();};
+let delArm=false;
+$('delJob').onclick=e=>{const n=(S.name||'').trim();const j=jobs();if(!n||!j[n]){toast('Load a saved job to delete it');return;}
+  if(!delArm){delArm=true;e.target.textContent='Tap again';e.target.classList.add('warn');setTimeout(()=>{delArm=false;e.target.textContent='Delete';e.target.classList.remove('warn');},2500);return;}
+  delete j[n];LS.set('padcf.jobs',j);delArm=false;e.target.textContent='Delete';e.target.classList.remove('warn');renderJobs();toast('Deleted "'+n+'"');};
+
+/* ===== results ===== */
+function lines(el,rows){el.innerHTML=rows.map(([a,b,cls])=>'<div><span>'+a+'</span><span'+(cls?' class="'+cls+'"':'')+'>'+b+'</span></div>').join('');}
+function renderResults(){
+  const r=R, ok=r.tris.length>0;
+  const cov=r.padA?r.area/r.padA:0;
+  let w='';
+  const missing=S.points.filter(p=>hOf(p)==null).length;
+  if(S.mode==='rod'&&num(S.target)==null) w='<div class="callout bad">Enter the target rod reading at finish grade.</div>';
+  else if(S.mode==='elev'&&num(S.fg)==null) w='<div class="callout bad">Enter the finish grade elevation.</div>';
+  else if(!ok) w='<div class="callout">Drop at least 3 shots with readings to get volumes.</div>';
+  else if(cov<0.98) w='<div class="callout">Shots cover '+(cov*100).toFixed(0)+'% of the pad. Shoot the corners and edges to cover the rest.</div>';
+  if(missing) w+='<div class="callout" style="margin-top:6px">'+missing+' shot'+(missing>1?'s have':' has')+' no reading yet and '+(missing>1?'are':'is')+' left out.</div>';
+  $('warn').innerHTML=w;
+  const sh=r.sh, sw=r.sw;
+  $('kCut').textContent=ok?fmt0(cy(r.cutV))+' CY':'—';
+  $('kFill').textContent=ok?fmt0(cy(r.fillV))+' CY':'—';
+  $('kCutA').textContent=ok?'over '+fmt0(r.cutA)+' sq ft':'bank (in place)';
+  $('kFillA').textContent=ok?'over '+fmt0(r.fillA)+' sq ft':'compacted';
+  $('kAvgC').textContent=ok&&r.cutA>0?(r.cutV/r.cutA).toFixed(2)+' ft':'—';
+  $('kAvgF').textContent=ok&&r.fillA>0?(r.fillV/r.fillA).toFixed(2)+' ft':'—';
+  $('kAvgCi').textContent=ok&&r.cutA>0?inch(r.cutV/r.cutA):'area-weighted';
+  $('kAvgFi').textContent=ok&&r.fillA>0?inch(r.fillV/r.fillA):'area-weighted';
+  const hs=r.P.map(p=>p.h), mxC=hs.length?Math.max(0,...hs):0, mxF=hs.length?Math.min(0,...hs):0;
+  const avgAll=ok?(r.cutV-r.fillV)/r.area:null;
+  const fillBank=sh<1?cy(r.fillV)/(1-sh):NaN, net=cy(r.cutV)-fillBank;
+  lines($('lines'),[
+    ['Pad area',fmt0(r.padA)+' sq ft'],
+    ['Area covered by shots',ok?fmt0(r.area)+' sq ft ('+(cov*100).toFixed(0)+'%)':'—'],
+    ['Average over pad (+cut / −fill)',ok?f2(avgAll)+' ft ('+(avgAll>=0?'C ':'F ')+inch(avgAll)+')':'—'],
+    ['Plain average of shots',hs.length?f2(hs.reduce((a,b)=>a+b,0)/hs.length)+' ft':'—'],
+    ['Deepest cut / fill',hs.length?mxC.toFixed(2)+' / '+(-mxF).toFixed(2)+' ft':'—'],
+    ['Net (cut − fill, no factors)',ok?f2(cy(r.cutV-r.fillV))+' CY':'—'],
+    ['Shots used',r.P.length+' of '+S.points.length]
+  ]);
+  const b=$('balance');
+  if(ok&&r.bal!=null){b.hidden=false;b.innerHTML=Math.abs(r.bal)<0.005?'<b>Pad balances at current grade.</b>':'<b>To balance:</b> '+(r.bal>0?'raise':'lower')+' finish grade '+Math.abs(r.bal).toFixed(2)+' ft ('+inch(r.bal)+')'+(sh?' with '+(sh*100).toFixed(0)+'% shrink.':'.');}
+  else b.hidden=true;
+  // haul
+  const truck=num(S.truck), stripIn=num(S.strip)||0, stripB=r.padA*stripIn/12/27;
+  const rows=[];
+  if(ok){
+    rows.push(['Cut (bank CY)',fmt0(cy(r.cutV))]);
+    rows.push(['Fill (compacted CY)',fmt0(cy(r.fillV))]);
+    rows.push(['Bank CY needed to make fill',Number.isFinite(fillBank)?fmt0(fillBank):'—']);
+    if(Number.isFinite(net)){
+      const lab=net>=0?'Export (excess cut)':'Import (short on dirt)';
+      rows.push([lab+', bank CY',fmt0(Math.abs(net)),net>=0?'c-t':'f-t']);
+      const loose=Math.abs(net)*(1+sw);
+      rows.push([lab+', loose CY',fmt0(loose)]);
+      rows.push(['Truckloads'+(truck?' @ '+truck+' LCY':''),truck>0?String(Math.ceil(loose/truck)):'enter truck load']);
+    }
+  } else rows.push(['Volumes','need 3+ shots']);
+  if(stripIn>0){rows.push(['Stripping, bank CY ('+stripIn+'" over pad)',fmt0(stripB)]);rows.push(['Stripping loads',truck>0?String(Math.ceil(stripB*(1+sw)/truck)):'—']);}
+  lines($('haul'),rows);
+}
+function renderTable(){
+  $('thIn').textContent=S.mode==='direct'?'Entered':S.mode==='rod'?'Rod ft':'Elev ft';
+  $('ptCount').textContent=S.points.length+' shot'+(S.points.length===1?'':'s');
+  $('tbody').innerHTML=S.points.map((p,i)=>{const h=hOf(p);const inp=S.mode==='direct'?(p.v==null?'—':cf(p.v)):S.mode==='rod'?(p.rod??'—'):(p.elev??'—');
+    return '<tr data-id="'+p.id+'"'+(p.id===sel?' class="sel"':'')+'><td>'+(i+1)+'</td><td>'+p.x.toFixed(1)+'</td><td>'+p.y.toFixed(1)+'</td><td>'+inp+'</td><td class="'+(h>0?'c-t':h<0?'f-t':'')+'">'+(h==null?'—':cf(h))+'</td><td>'+(h==null?'—':inch(h))+'</td><td style="text-align:left;font-family:var(--f-body)">'+(p.note||'').replace(/</g,'&lt;')+'</td></tr>';}).join('')||'<tr><td colspan="7" style="text-align:left;color:var(--muted)">No shots yet. Tap the pad to add one.</td></tr>';
+}
+$('tbody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;sel=+tr.dataset.id;refresh();focusEditor();});
+
+function syncInputs(){
+  $('jobName').value=S.name||''; $('W').value=S.W; $('L').value=S.L; $('mode').value=S.mode;
+  $('target').value=S.target??''; $('fg').value=S.fg??''; $('soil').value=S.soil||'custom'; $('shrink').value=S.shrink??''; $('swell').value=S.swell??'';
+  $('truck').value=S.truck??''; $('strip').value=S.strip??''; $('snap').checked=!!S.snap;
+}
+const hints={direct:'Enter each shot as cut or fill depth in decimal feet (0.50 ft = 6 in).',rod:'Set the target rod reading at finish grade, then enter the rod reading at each shot. Cut/fill = target − reading.',elev:'Enter finish grade elevation, then existing ground elevation at each shot. Cut/fill = existing − finish.'};
+function refresh(full=true){
+  if(!(S.W>0))S.W=100; if(!(S.L>0))S.L=100;
+  S.points.forEach(p=>{p.x=clamp(p.x,0,S.W);p.y=clamp(p.y,0,S.L);});
+  $('targetWrap').hidden=S.mode!=='rod'; $('fgWrap').hidden=S.mode!=='elev'; $('modeHint').textContent=hints[S.mode];
+  $('exampleTag').hidden=!S.example;
+  compute(); draw(); fillEditor();
+  if(full){renderResults();renderTable();}
+  else{renderResults();}
+  persist();
+}
+$('copy').onclick=async()=>{
+  const r=R;const rows=[['Job',S.name||'(unnamed)'],['Pad',S.W+' x '+S.L+' ft'],['Cut CY',cy(r.cutV).toFixed(1)],['Fill CY',cy(r.fillV).toFixed(1)],['Avg cut ft',r.cutA?(r.cutV/r.cutA).toFixed(2):''],['Avg fill ft',r.fillA?(r.fillV/r.fillA).toFixed(2):''],['Coverage %',(r.area/r.padA*100).toFixed(0)],[],['#','X','Y','CutFill_ft','Note']];
+  S.points.forEach((p,i)=>{const h=hOf(p);rows.push([i+1,p.x,p.y,h==null?'':h.toFixed(2),p.note||'']);});
+  const txt=rows.map(r=>r.join(',')).join('\n');
+  try{await navigator.clipboard.writeText(txt);toast('Copied (CSV) — paste into Excel or a text');}catch(e){toast('Copy blocked by this browser');}
+};
+window.addEventListener('resize',()=>draw());
+if(window.matchMedia){matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>draw());}
+new MutationObserver(()=>draw()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+syncInputs(); renderJobs(); refresh();
+document.fonts&&document.fonts.ready.then(()=>draw());
+</script>
+</body>
+</html>
